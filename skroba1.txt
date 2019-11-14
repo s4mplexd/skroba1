@@ -1,0 +1,240 @@
+# New User Script
+$cred = Get-AutomationPSCredential -Name 'AutomationCred'
+Add-AzureRmAccount -Credential $cred
+
+# Starting Exchange Session
+$session_exchange = new-pssession -credential $mycredential -configurationname microsoft.exchange -connectionuri http://skexstandby/powershell/ -authentication kerberos
+import-pssession $session_exchange
+Import-Module ActiveDirectory
+
+# Creating mailbox user
+$firstname = Read-Host 'Enter user`s first name'
+$lastname = Read-Host 'Enter user`s lastname'
+$exchange_mailbox_fullname = $firstname + ' ' + $lastname
+#$username = $firstname.tolower() + $lastname.ToLower()
+#$username = $firstname.Substring(0,1).tolower() + 'e' + $lastname.ToLower()
+$username = $firstname.Substring(0,1).tolower() + $lastname.ToLower()
+$exchange_user_email = $username + '@skender.com'
+$phone_number = Read-Host 'Enter user`s cell phone number (xxx xxx xxxx)'
+$job_title = Read-Host 'Enter user`s job title'
+$fax_line = '312 781 0279'
+$calendar_access = 'calendarmanageraccess@skender.com'
+$licensetype = Read-Host 'Enter 1 for E4 or 2 for Exchange Basic or 3 for Sharepoint'
+$mainorplant = Read-Host "Enter 1 for Skender, Enter 2 for Skender Plant, Enter 3 for Skender Manufacturing Office"
+$skypeaccount = Read-Host "Does the user need a Skype account? Enter 1 for yes or 2 for no"
+#$team = Read-Host "Enter Team: 1 for Corporate, 2 for Joe P - MultiUnit, 3 for Brian S - Healthcare, 4 for Brain B - Interiors, 5 for Manufacturing, 6 for Design"
+$labpass = $lastname.Substring(0,3).ToUpper() + 'Sk3nd3r!'
+$group = Read-Host 'Enter Group: Project Mangement, Corporate, Design, Project Executive, Executive, Field Supervision, Field, SPQ, Manufacturing Office, Manufacturing Floor'
+
+
+
+# LOCAL COMMANDS
+
+# Creating mailbox
+new-remotemailbox -name $exchange_mailbox_fullname -firstname $firstname -lastname $lastname -password (convertto-securestring -string 'Skender123!!' -asplaintext -force) -userprincipalname $exchange_user_email
+
+# Move to correct OU
+$OU = Read-Host 'Enter Department (Architects, California, Corporate, Healthcare Group, Interiors Group, Laborers, Manufacturing)'
+$OU_target_path = 'OU=' + $OU +',OU=Skender,DC=Skender,DC=com'
+$user_guid = 'CN=' + $exchange_mailbox_fullname + ',CN=Users,DC=Skender,DC=com'
+Move-ADObject -Identity $user_guid -TargetPath $OU_target_path
+
+# Create AD User
+Set-ADUser $username -ChangePasswordAtLogon $false -MobilePhone $phone_number -Office 'Chicago' -StreetAddress '1330 W. Fulton St., Suite 200' -HomePage 'wwww.skender.com'-City 'Chicago' -State 'IL' -PostalCode '60607' -Fax $fax_line -Title $job_title -Company 'Skender' -Description $job_title
+
+# Sleep for 30 sec
+start-sleep -s 30
+
+# Change password to more secure (first three letters of last name all uppercase followed by Sk3nd3r! ex: Lionberger -> LIOSk3nd3r!)
+Set-ADAccountPassword -Identity $username -NewPassword (ConvertTo-SecureString -AsPlainText $labpass -Force)
+
+
+# Set password to never expire
+Set-ADUser -Identity $username -PasswordNeverExpires:$true
+
+# Edit address and compnay for plant workers
+if ($OU -eq 'Manufacturing') {
+    Set-ADUser $username -StreetAddress '3348 South Pulaski' -Company 'Skender Manufacturing'
+}
+
+# Allow remote connection (dial in)
+set-aduser $username -replace @{msnpallowdialin=$true}
+
+# Add security group membership by OU
+
+if ($OU -eq 'Healthcare Group') {
+    Add-ADGroupMember -identity 'Healthcare Group' -members $username
+    Add-ADGroupMember -identity 'Healthcare Access Group' -members $username
+    Add-ADGroupMember -identity 'Corporate' -members $username
+    Add-ADGroupMember -identity 'Corporate Access Group' -members $username
+}
+if ($OU -eq 'Interiors Group') {
+    Add-ADGroupMember -identity 'Interiors Group' -members $username
+    Add-ADGroupMember -identity 'Interiors Group Users' -members $username
+    Add-ADGroupMember -identity 'Interiors Access Group' -members $username
+    Add-ADGroupMember -identity 'Corporate' -members $username
+    Add-ADGroupMember -identity 'Corporate Access Group' -members $username
+}
+if ($OU -eq 'Laborers') {
+    Add-ADGroupMember -identity 'All Laborers' -members $username
+}
+
+<# Adding Factory Security Groups
+if ($mainorplant -eq '3') {
+    Add-ADGroupMember -identity 'Manufacturing Access Group' -members $username
+    Add-ADGroupMember -identity 'Skender Manufacturing' -members $username
+}
+#>
+
+# PROJECT MANAGEMENT
+if ($group -eq 'Project Management') {
+    Add-DistributionGroupMember -Identity "Futlon HQ" -members $username
+}
+if ($group -eq 'Project Management' -and $job_title -match 'Project Manager') {
+    Add-ADGroupMember -Identity "All Project Managers" -members $username
+}
+if ($group -eq 'Project Management' -and $job_title -match 'Project Engineer') {
+    Add-ADGroupMember -Identity "All Project Engineers" -members $username
+}
+if ($group -eq 'Project Management' -and $job_title -match 'Client Services Manager') {
+    Add-ADGroupMember -Identity "All Project Engineers" -members $username
+}
+if ($group -eq 'Project Management' -and $job_title -match 'Team Leader') {
+    Add-ADGroupMember -Identity "Team Leaders" -members $username
+}
+
+# Corporate
+if ($group -eq 'Corporate') {
+    Add-ADGroupMember -identity 'Corporate' -members $username
+    Add-ADGroupMember -identity 'Corporate Access Group' -members $username
+    Add-DistributionGroupMember -Identity "Futlon HQ" -members $username
+}
+if ($group -eq 'Corporate' -and $job_title -match 'Project Accountant') {
+    Add-ADGroupMember -identity 'All Project Accountants' -members $username
+}
+if ($group -eq 'Corporate' -and $job_title -match 'Project Coordinator') {
+    Add-ADGroupMember -identity 'All Project Coordinators' -members $username
+}
+
+# Design
+if ($group -eq 'Design') {
+    Add-ADGroupMember -Identity "Skender Design" -members $username
+    Add-DistributionGroupMember -Identity "Futlon HQ" -members $username
+}
+
+# Project Executive
+if ($group -eq 'Project Executive') {
+    Add-DistributionGroupMember -Identity "PX Group" -members $username
+    Add-DistributionGroupMember -Identity "Futlon HQ" -members $username
+    Add-DistributionGroupMember -Identity "Team Leaders" -members $username
+}
+
+# Executive
+if ($group -eq 'Executive') {
+    Add-ADGroupMember -Identity "All Skender" -members $username
+    Add-DistributionGroupMember -Identity "PX Group" -members $username
+    Add-DistributionGroupMember -Identity "Futlon HQ" -members $username
+}
+if ($group -eq 'Executive' -and $job_title -match 'Partner') {
+    Add-ADGroupMember -identity 'Executive Partners' -members $username
+}
+
+# Field Supervision
+if ($group -eq 'Field Supervision' -and $job_title -match 'Superintendent' -or $job_title -match 'Field Engineer') {
+    Add-ADGroupMember -identity 'All Superintendents' -members $username
+}
+if ($group -eq 'Field Supervision' -and $job_title -eq 'Project Foreman') {
+    Add-ADGroupMember -identity 'All Project Foreman' -members $username
+}
+if ($job_title -match 'Laborer') {
+    Add-ADGroupMember -identity 'All Laborers' -members $username
+}
+if ($job_title -match 'Project Foreman') {
+    Add-ADGroupMember -identity 'All Laborers' -members $username
+}
+
+
+
+###use -or operator 
+
+
+# Add to all other security groups
+Add-ADGroupMember -identity 'TEMS Offline Email' -members $username
+
+# Adding all non plant workers to the following gorups: 
+if ($mainorplant -eq '1' -or '3') { 
+    Add-ADGroupMember -identity 'Bluebeam Revu' -members $username
+    Add-ADGroupMember -identity 'Citrix Users' -members $username
+    Add-ADGroupMember -identity 'Mobile Device Users' -members $username
+    Add-ADGroupMember -identity 'VPN Users' -members $username
+    Add-ADGroupMember -identity 'Zoom Users' -members $username
+}
+
+
+# Update birthday in custom attributes
+$birthday_input = Read-Host 'Enter birthday (month/day | example: 9/28)'
+$birthday = $birthday_input + '/2012'
+Set-ADUser -identity $username -add @{extensionattribute1=$birthday}
+
+
+# Ending skex session
+Get-PSSession
+Remove-PSSession
+
+
+invoke-command -filepath \\skdc05\SYSVOL\Skender.com\scripts\ad_sync.ps1 -computername skazure01
+
+# Sleep 5min
+start-sleep -s 300
+
+# Starting O365 Connetion
+$Session2 = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri https://outlook.office365.com/powershell-liveid/ -Credential $MyCredential -Authentication Basic -AllowRedirection
+Import-PSSession $Session2
+Connect-MsolService -Credential $MyCredential
+
+# Assign license
+set-msoluser -userprincipalname $exchange_user_email -usagelocation US
+
+# If Licensetype is 1 then assign E4 license suite, if 2 then assign exchange standard
+if ($licensetype -eq '1') { 
+    Set-MsolUserLicense -UserPrincipalName $exchange_user_email -AddLicenses 'skender:ENTERPRISEWITHSCAL'
+}
+# If mainorplant variable is 2, then the employee works for Skender Manufacturing and gets an exchange standard license
+if ($licensetype -eq '2') { 
+    Set-MsolUserLicense -UserPrincipalName $exchange_user_email -AddLicenses 'skender:EXCHANGESTANDARD'
+}
+if ($licensetype -eq '3') { 
+    Set-MsolUserLicense -UserPrincipalName $exchange_user_email -AddLicenses 'skender:SHAREPOINTENTERPRISE'
+}
+
+
+
+
+
+
+# Sleep 30sec
+start-sleep -s 30
+
+
+
+# Add calander manager access
+Add-MailboxFolderPermission -Identity ($username +'@skender.com:\Calendar') -User $calendar_access -AccessRights Author
+
+Get-PSSession
+Remove-PSSession
+
+
+#TEAM VENTI EMAIL
+$domain = '@skender.com'
+$From = "itskender@skender.com"
+$ToTeamVenti = "support@teamventi.freshdesk.com"
+$Cc = "slionberger@skender.com"
+$Subjectteamventi = 'New User' + ' ' + $exchange_mailbox_fullname
+$BodyTeamVenti = "Please create a Skype account for" + ' ' + $exchange_mailbox_fullname + '.' + " Username = " + $username + $domain + '.' + ' ' + 'Password = Skender123.' + ' ' + 'No desk phone number needed.'
+$SMTPServer = "smtp.office365.com"
+$SMTPPort = "587"
+
+# Send skype account request to team venti
+if ($skypeaccount -eq '1') {
+    Send-MailMessage -From $From -to $ToTeamVenti -Cc $Cc -Subject $SubjectTeamVenti -Body $BodyTeamVenti -SmtpServer $SMTPServer -port $SMTPPort -UseSsl -Credential $mycredential
+}
